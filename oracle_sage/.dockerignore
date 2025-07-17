@@ -1,0 +1,9 @@
+_build/
+deps/
+.elixir_ls/
+.git/
+.gitignore
+README.md
+test/
+priv/static/assets/
+node_modules/

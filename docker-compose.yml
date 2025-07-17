@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: oracle_sage_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  ollama-init:
+    image: curlimages/curl:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    command: >
+      sh -c "
+        sleep 5 &&
+        curl -X POST http://ollama:11434/api/pull -d '{\"name\":\"llama3.2:1b\"}'
+      "
+
+
+  oracle_sage:
+    build: ./oracle_sage
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/oracle_sage_dev
+      LLM_BASE_URL: http://ollama:11434
+      LLM_MODEL: llama3.2:1b
+      PORT: 4000
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ./oracle_sage:/app
+      - /app/deps
+      - /app/_build
+    command: >
+      sh -c "
+        mix deps.get &&
+        mix ecto.create &&
+        mix ecto.migrate &&
+        mix phx.server
+      "
+
+  oracle_nexus:
+    build: ./oracle-nexus
+    environment:
+      REACT_APP_API_URL: http://localhost:4000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./oracle-nexus:/app
+      - /app/node_modules
+    command: npm start
+
+volumes:
+  postgres_data:
+  ollama_data:
